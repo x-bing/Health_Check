@@ -1,0 +1,269 @@
+#/bin/bash
+
+DISK_WARNING=70
+
+get_hostname()
+{
+    hostname
+}
+get_ipaddr()
+{
+	rm -f /tmp/tmpfile
+	/sbin/ifconfig -a |grep -E "eth[0-9]|bond[0-9]|em[0-9]|enp[0-9]" |awk '{print $1}' |while read nic
+	do
+		ipaddr=`/sbin/ifconfig -a |grep -A1 $nic|grep inet |awk '{print $2}'|tr -d "addr:"`
+		nic_conf="$nic_conf$nic:$ipaddr;"
+		echo $nic_conf > ~/tmpfile
+	done
+	cat ~/tmpfile
+}
+get_server_vender()
+{
+	vendor=`sudo /usr/sbin/dmidecode|grep -A10 "System Information" |grep "Manufacturer" |awk -F: '{print $2}'|tr -d ","`
+	echo "$vendor"
+}
+get_server_type()
+{
+	product_name=`sudo /usr/sbin/dmidecode|grep -A10 "System Information" |grep "Product Name" |awk -F: '{print $2}'`
+	echo "$product_name"
+}
+get_osversion()
+{
+	osversion=`cat /etc/redhat-release`
+	echo $osversion
+}
+get_kernelversion()
+{
+	kernelversion=`uname -a |grep -v "^ *$"|awk '{print $3}'`
+	echo $kernelversion
+}
+get_uptime()
+{
+	uptime=`uptime |awk -F, '{print $1}'|sed 's/.*up //g'`
+	echo $uptime
+}
+get_sysload()
+{
+	sysload=`uptime | awk -F[,:] '{print $(NF-2) $(NF-1) $NF}'`
+	echo $sysload
+}
+get_runlevel()
+{
+	runlevel=`/sbin/runlevel |awk  '{print $2}'`
+	echo $runlevel
+}
+get_diskusage()
+{
+	rm -f ~/tmpfile
+	df -hTP |grep -v "^ *$" |tail -n +2|sed -e 'N;s/\n[ ]*ext/ ext/g'|while read line
+	do
+		disk_usage=`echo $line | awk '{print $6}'`
+		mount_point=`echo $line | awk '{print $7}'`
+		if [ `echo $disk_usage|tr -d "%"` -gt $DISK_WARNING ]; then
+			echo -e "$mount_point:$disk_usage;\c" >>~/tmpfile
+		fi
+	done
+	echo "" >> ~/tmpfile
+	if [ `grep -v "^ *$" ~/tmpfile|wc -l` -ne 0 ];then
+		cat ~/tmpfile
+	else 
+		echo "OK"
+	fi
+}
+get_memtotal()
+{
+	memtotal=`free -m|grep -i mem |awk '{print $2}'`
+	echo $memtotal
+}
+get_memusage()
+{
+	memusage=`free -m|grep -i mem |awk '{printf "%.1lf",($3-$6-$7)/$2*100}'`
+	echo "%$memusage"
+}
+get_swaptotal()
+{
+	swaptotal=`free -m|grep -i Swap |awk '{print $2}'`
+        echo "$swaptotal MB"
+}	
+get_swapusage()
+{
+        swapusage=`free -m|grep -i Swap |awk '{printf "%.1lf",$3/$2*100}'`
+        echo "%$swapusage"
+}	
+get_procnum()
+{
+	procnum=`top -b n1 |grep "^Tasks:" |awk -F, '{print $1}' |tr -d " "|tr -d "Tasks:" |tr -d "total"`
+	echo $procnum
+}
+get_zombie()
+{
+	zombie_num=`top -b n1 |grep "^Tasks:" |awk -F, '{print $5}' |tr -d " " |tr -d "zombie"`
+	echo $zombie_num
+}
+get_packagelost()
+{
+        rm -f ~/tmpfile
+	/sbin/ifconfig -a |grep -E "eth[0-9]|bond[0-9]|em[0-9]|enp[0-9]" |awk '{print $1}' |while read nic
+        do
+                rxpkglost=`/sbin/ifconfig -a |grep -A9 $nic|grep "RX packets" |awk '{print $3,$4,$5}'|awk -F: '{print $2,$3,$4}'|awk '{print $1+$3+$5}'`
+		if [ $rxpkglost -gt 0 ]; then
+                	lostinfo="$lostinfo$nic:RXlost:$rxpkglost;"
+		fi
+                txpkglost=`/sbin/ifconfig -a|grep -A9 $nic|grep "TX packets" |awk '{print $3,$4,$5}'|awk -F: '{print $2,$3,$4}'|awk '{print $1+$3+$5}'`
+                if [ $txpkglost -gt 0 ]; then
+                	lostinfo="$lostinfo$nic:TXlost:$txpkglost;"
+                fi
+                echo $lostinfo > ~/tmpfile
+        done
+	if [ `grep -v "^ *$" ~/tmpfile|wc -l` -ne 0 ];then
+		cat ~/tmpfile
+	else 
+		echo "OK"
+	fi
+}
+
+get_cluststat()
+{
+	which clustat
+	if [ $? -ne 0 ]; then
+		echo "No HA"
+	else
+		if [ `clustat | grep Offline |wc -l` -ne 0 ]; then
+			echo "Error"
+			clustat > ./err_msg_cluster
+		else
+			echo "OK"
+		fi
+	fi
+}
+
+get_selinux()
+{
+	/usr/sbin/getenforce
+}
+
+get_dmesgerr()
+{
+	if [ `dmesg |grep -i -E  "error|warning|fail" |grep -v "dev fd"|grep -v -E "^hub"|grep -v "ipmi_si: Interface detection failed"|grep -v drive_cmd | grep -v ide|grep -v usb|grep -v "^ *$"|wc -l` -ne 0 ]; then
+		if [ `dmesg |grep -i -E  "error|warning|fail" |grep -v "dev fd"|grep -v -E "^hub"|grep -v "ipmi_si: Interface detection failed"|grep -v drive_cmd | grep -v ide|grep -v usb|grep -i -v warning|grep -v "^ *$"|wc -l` -ne 0 ]; then
+			echo "Error"
+		else
+			echo "Warning"
+		fi
+        	dmesg |grep -i -E  "error|warning|fail" |grep -v "dev fd"|grep -v -E "^hub"|grep -v "ipmi_si: Interface detection failed"|grep -v drive_cmd | grep -v ide|grep -v usb|grep -v "^ *$" > ./err_msg_dmesg
+	else
+		echo "OK"
+	fi
+}
+get_mcelogerr()
+{
+	/sbin/service mcelog status
+	if [ $? -ne 0 ]; then
+		echo "no mcelog"
+	else
+		if [ `sudo cat /var/log/mcelog|grep -v "^ *$"|wc -l` -ne 0 ];then
+			echo "Error"
+        		sudo cat /var/log/mcelog|grep -v "^ *$" > ./err_msg_mcelog
+	  	else
+			echo "OK"
+		fi
+	fi
+}
+get_messageerr()
+{
+	if [ `sudo grep -E -i "error|fail|warning" /var/log/messages*|grep -v "grep error" |grep -v "Failed password"|grep -v "grep fail"|grep -v "Cannot retrieve repository metadata (repomd.xml)"|wc -l` -ne 0 ]; then
+		if [ `sudo grep -E -i "error|fail" /var/log/messages*|grep -v "Failed password"|grep -v "Cannot retrieve repository metadata (repomd.xml)"|wc -l` -ne 0 ]; then
+			echo "Error"
+		else
+			echo "Warning"
+		fi
+                sudo grep -E -i "error|fail|warning" /var/log/messages*|grep -v "Failed password"|grep -v "Cannot retrieve repository metadata (repomd.xml)" >> ./err_msg_system
+	else
+		echo "OK"
+	fi
+}
+
+
+rm -rf healcheck_report_`hostname`
+mkdir healcheck_report_`hostname`
+cd healcheck_report_`hostname`
+
+alias echo='echo -e'
+echo "======Gen Report ...======"
+
+echo "Get Hostname..."
+echo -e "`get_hostname`,\c" >> ./healcheck_report
+
+echo "Get IP Config..."
+echo -e "`get_ipaddr`,\c" >> ./healcheck_report
+
+echo -e "Get Server_Vender..."
+echo -e "`get_server_vender`,\c" >> ./healcheck_report
+
+echo -e "Get Server_Type..."
+echo -e "`get_server_type`,\c" >> ./healcheck_report
+
+echo "Get Os Version..."
+echo -e "`get_osversion`,\c" >> ./healcheck_report
+
+echo "Get Kernel Version..."
+echo -e "`get_kernelversion`,\c" >> ./healcheck_report
+
+echo "Get Uptime..."
+echo -e "`get_uptime`,\c" >> ./healcheck_report
+
+echo "Get SysLoad 1 5 15 min..."
+echo -e "`get_sysload`,\c" >> ./healcheck_report
+
+echo "Get RunLevel..."
+echo -e "`get_runlevel`,\c" >> ./healcheck_report
+
+echo "Get Disk Usage gt 80%..."
+echo -e "`get_diskusage`,\c" >> ./healcheck_report
+
+echo "Get Mem Total..."
+echo -e "`get_memtotal`,\c" >> ./healcheck_report
+
+echo "Get Mem Usage..."
+echo -e "`get_memusage`,\c" >> ./healcheck_report
+
+echo "Get Swap Total..."
+echo -e "`get_swaptotal`,\c" >> ./healcheck_report
+
+echo "Get Swap Usage..."
+echo -e "`get_swapusage`,\c" >> ./healcheck_report
+
+echo "Get Proc Num..."
+echo -e "`get_procnum`,\c" >> ./healcheck_report
+
+echo "Get Zombie Process Num..."
+echo -e "`get_zombie`,\c" >> ./healcheck_report
+
+echo "Get Package Lost..."
+echo -e "`get_packagelost`,\c" >> ./healcheck_report
+
+echo "Get Cluster Stat..."
+echo -e "`get_cluststat`,\c" >> ./healcheck_report
+
+echo "Get SELinux stat..."
+echo -e "`get_selinux`,\c" >> ./healcheck_report
+
+echo "Get dmesg Error..."
+echo -e "`get_dmesgerr`,\c" >> ./healcheck_report
+
+echo "Get Hardware Error..."
+echo -e "`get_mcelogerr`,\c" >> ./healcheck_report
+
+echo "Get System Error..."
+echo -e "`get_messageerr`,\c" >> ./healcheck_report
+
+echo "" >> ./healcheck_report
+cd -
+echo "======Report for $machine done!!i====="
+echo ""
+
+tar czvf healcheck_report_`hostname`.tgz healcheck_report_`hostname`
+rm -rf ~/healcheck_report_`hostname`
+rm -rf ~/tmpfile
+
+echo "Done!!!"

@@ -1,0 +1,14 @@
+1. Gen Key pair
+ # ssh-keygen
+ copy /root/.ssh/id_rsa /root/.ssh/id_rsa.pub into key directory，and modify the name to  id_rsa.hc id_rsa.pub.hc
+
+2. Setup a Host for healcheck (from check server)
+
+ use scp copy tools/setup_healcheck_user.sh and key/id_rsa.pub.hc to remote server(will be healcheck)  /tmp directory
+ use ssh run "cd /tmp ; ./setup_healcheck_user.sh monitor 611 611
+
+3. modify checklist.txt and run runcheck.sh
+
+ ./runcheck.sh checklist.txt
+
+ you need modify runcheck.sh first ,modify the username to monitor (same with "./setup_healcheck_user.sh monitor 611 611")
