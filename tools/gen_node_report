@@ -124,13 +124,13 @@ get_packagelost()
 
 get_cluststat()
 {
-	which clustat
+	which clustat 1>/dev/null 2>&1
 	if [ $? -ne 0 ]; then
 		echo "No HA"
 	else
 		if [ `clustat | grep Offline |wc -l` -ne 0 ]; then
 			echo "Error"
-			clustat > ./err_msg_cluster
+			clustat 1>./err_msg_cluster 2>$1
 		else
 			echo "OK"
 		fi
@@ -181,6 +181,24 @@ get_messageerr()
 	else
 		echo "OK"
 	fi
+}
+
+get_timezone()
+{
+	date -R |awk '{print "TZ" $6}'
+}
+
+get_netstats()
+{
+	/sbin/ip route ls |grep via |awk '{print $3}' |while read gw
+	do
+		ping -c2 -w2 $gw 1>/dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			echo -e "$gw:Error;\c"
+		else
+			echo -e "$gw:OK;\c"
+		fi
+	done
 }
 
 
@@ -256,6 +274,11 @@ echo -e "`get_mcelogerr`,\c" >> ./healcheck_report
 
 echo "Get System Error..."
 echo -e "`get_messageerr`,\c" >> ./healcheck_report
+
+echo "Get System Timezone"
+echo -e "`get_timezone`,\c" >> ./healcheck_report
+echo "Get Network link to gateway"
+echo -e "`get_netstats`,\c" >> ./healcheck_report
 
 echo "" >> ./healcheck_report
 cd -
